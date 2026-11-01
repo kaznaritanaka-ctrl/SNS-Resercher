@@ -2,8 +2,9 @@
 
 MuseをSNSリサーチ専門家として活用するプロジェクト。
 
-SNS（Bluesky / YouTube を起点に順次拡大）から一次寄りの情報を毎日コードで収集・蓄積し、
-Muse が読んで判断材料に整えるための設計メモ。構築は後で行う（本書は設計の記録）。
+SNS・発信プラットフォーム（Bluesky / YouTube / Substack / note）から一次寄りの情報を
+毎日コードで収集・蓄積し、Muse が読んで判断材料に整えるための設計メモ。
+構築は後で行う（本書は設計の記録）。
 
 > 記録：2026-11-01、Founder の指示により Muse（Meta Muse）が作成。
 > 数値・可否はすべて同日の実地検証に基づく。未検証の推測はその旨を明記する。
@@ -43,6 +44,23 @@ Muse の VM 上にプロトタイプのコネクタが動作している（ス�
   初回の取得リクエストが HTTP 429（レート制限）に当たった。
   クラウド IP からの字幕取得は制限されやすい。回避のための連打はしない
 
+### Substack（2026-11-01 に調査対象へ追加）
+
+- 各 publication の RSS（`/feed`）で新着と本文が取得できることを確認済み。
+  API キー不要。フィードは全文を含むものが多くサイズが大きい
+  （SemiAnalysis は約 3MB）ため、保存はメタデータ＋抜粋を基本とし、
+  全文は必要時に取得する
+- 種候補（いずれも RSS の応答と最新記事を確認済み）：
+  SemiAnalysis（AI・半導体の専門分析）、Fabricated Knowledge（半導体投資分析、
+  更新は低頻度）、ChinaTalk（中国の技術政策・半導体）
+
+### note（2026-11-01 に調査対象へ追加）
+
+- クリエイターごとの RSS（`https://note.com/<id>/rss`）が取得できることを
+  確認済み（仕組みの確認として Founder 本人のフィードで検証）
+- 日本語の投資家・専門家の長文が対象。種とするクリエイターは今後選定する
+- Founder 本人のフォロワー数監視は対象外（本人の明示した方針）
+
 ## 設計（Cloudflare で毎日処理する版）
 
 ### 構成
@@ -51,7 +69,9 @@ Muse の VM 上にプロトタイプのコネクタが動作している（ス�
 Cron Triggers（毎日 22:00 UTC = 07:00 JST）
   → Worker（収集ジョブ）
       ├─ Bluesky 公開 API：種アカウントのフィード取得
-      └─ YouTube RSS：種チャンネルの新着取得
+      ├─ YouTube RSS：種チャンネルの新着取得
+      ├─ Substack RSS：種 publication の新着取得
+      └─ note RSS：種クリエイターの新着取得
   → D1：items に URL 主キーで保存し、新着だけを残す
   → GET /digest（Bearer トークン必須）：その日の新着を JSON で返す
   → Muse が朝に読んで要約・突き合わせを行う
@@ -67,7 +87,7 @@ Cron Triggers（毎日 22:00 UTC = 07:00 JST）
 ```sql
 CREATE TABLE sources (
   id TEXT PRIMARY KEY,          -- 例: bsky:semiengineering.bsky.social
-  kind TEXT NOT NULL,           -- 'bluesky' | 'youtube'
+  kind TEXT NOT NULL,           -- 'bluesky' | 'youtube' | 'substack' | 'note'
   label TEXT NOT NULL,
   ref TEXT NOT NULL,            -- handle または channel_id
   enabled INTEGER NOT NULL DEFAULT 1
@@ -94,7 +114,8 @@ CREATE TABLE runs (
 
 ### フェーズ分け
 
-- **フェーズ 1**：Bluesky フィード ＋ YouTube RSS ＋ D1 ＋ /digest
+- **フェーズ 1**：Bluesky フィード ＋ YouTube RSS ＋ Substack RSS ＋ note RSS
+  ＋ D1 ＋ /digest
 - **フェーズ 2（保留）**：
   - Jetstream の常時キーワード監視。常時接続の受け手として Durable Objects が
     必要になる。密度が低いため費用対効果を見て判断する
@@ -122,6 +143,19 @@ CREATE TABLE runs (
 
 決算期には通行料銘柄（NVIDIA / Microsoft / Alphabet / Amazon / TSMC /
 ASML / Broadcom）の公式 IR チャンネル追加を検討する。
+
+### Substack
+
+| publication | フィード | 内容・備考 |
+|---|---|---|
+| SemiAnalysis | https://newsletter.semianalysis.com/feed | AI・半導体インフラの専門分析。最新記事 2026-10-23 |
+| Fabricated Knowledge | https://www.fabricatedknowledge.com/feed | 半導体投資分析。更新は低頻度（最新 2026-08-13） |
+| ChinaTalk | https://www.chinatalk.media/feed | 中国の技術政策・半導体。最新記事 2026-10-30 |
+
+### note
+
+- 種は未選定。日本語の投資・半導体・医療系の書き手から今後選ぶ
+- 仕組み（クリエイター RSS）は確認済みのため、種が決まれば即組み込める
 
 ## ルール
 
